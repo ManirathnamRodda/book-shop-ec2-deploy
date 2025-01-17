@@ -1,1 +1,1 @@
-# book-shop-ec2-deploy.
+# book-shop-ec2-deploy
