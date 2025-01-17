@@ -1,0 +1,50 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Package Application
+        run: zip -r app.zip .
+
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@v0.1.1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "app.zip"
+          target: "/home/ubuntu/"
+
+      - name: Deploy Application
+        uses: appleboy/ssh-action@v0.1.1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            sudo apt-get update
+            sudo apt-get install -y nodejs npm unzip
+            rm -rf /var/www/bookshop
+            mkdir -p /var/www/bookshop
+            unzip ~/app.zip -d /var/www/bookshop
+            cd /var/www/bookshop
+            npm install
+            pm2 restart app || pm2 start app.js --name "bookshop"
