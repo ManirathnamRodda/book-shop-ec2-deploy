@@ -22,30 +22,53 @@ jobs:
         run: npm install
 
       - name: Package Application
-        run: zip -r app.zip .
+        run: zip -r app.zip . -x ".git/*" "node_modules/*"
 
-      - name: Copy files to EC2 instance
-        uses: appleboy/scp-action@v0.1.1
+      - name: Prepare SSH Environment
+        run: |
+          mkdir -p ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Write SSH Key
+        run: |
+          echo "${{ secrets.EC2_KEY }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Debug SSH Connection
+        run: |
+          ssh -vvv -o StrictHostKeyChecking=no -i key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo Connection Successful"
+
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.EC2_PUBLIC_IP }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           source: "app.zip"
           target: "/home/ubuntu/"
-          port : 22
+          debug: true
 
       - name: Deploy Application
-        uses: appleboy/ssh-action@v0.1.1
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_PUBLIC_IP }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
+            # Update system and install dependencies
             sudo apt-get update
             sudo apt-get install -y nodejs npm unzip
-            rm -rf /var/www/bookshop
-            mkdir -p /var/www/bookshop
+            sudo npm install -g pm2
+
+            # Ensure /var/www directory exists with correct permissions
+            sudo mkdir -p /var/www/bookshop
+            sudo chown -R $USER:$USER /var/www/bookshop
+
+            # Unzip application and install dependencies
             unzip ~/app.zip -d /var/www/bookshop
             cd /var/www/bookshop
             npm install
+
+            # Start or restart the application with pm2
             pm2 restart app || pm2 start app.js --name "bookshop"
